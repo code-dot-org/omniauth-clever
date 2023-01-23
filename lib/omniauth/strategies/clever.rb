@@ -4,6 +4,8 @@ require 'base64'
 module OmniAuth
   module Strategies
     class Clever < OmniAuth::Strategies::OAuth2
+      CLEVER_API_VERSION = 'v2.1'
+
       # Clever is a unique OAuth 2.0 service provider in that login sequences
       # are often initiated by Clever, not the client. When Clever initiates
       # login, a state parameter is not relevant nor sent.
@@ -22,7 +24,7 @@ module OmniAuth
 
       def token_params
         super.tap do |params|
-          params[:headers] = {'Authorization' => "Basic #{Base64.strict_encode64("#{options.client_id}:#{options.client_secret}")}"}
+          params[:headers] = { 'Authorization' => "Basic #{Base64.strict_encode64("#{options.client_id}:#{options.client_secret}")}" }
         end
       end
 
@@ -42,10 +44,23 @@ module OmniAuth
         end
       end
 
-      uid{ raw_info['data']['id'] }
+      uid { raw_info.dig(:me, 'data', 'id') }
 
       info do
-        { :user_type => raw_info['type'] }.merge! raw_info['data']
+        personal_info = raw_info[:canonical]
+        first_name = personal_info.dig('data', 'name', 'first')
+        last_name = personal_info.dig('data', 'name', 'last')
+        name = "#{first_name} #{last_name}".strip
+        email = personal_info.dig('data', 'email')
+        user_type = raw_info.dig(:me, 'type')
+        # https://github.com/omniauth/omniauth/wiki/Auth-Hash-Schema
+        info = {}
+        info[:name] = name if name
+        info[:first_name] = first_name if first_name
+        info[:last_name] = last_name if last_name
+        info[:email] = email if email
+        info[:user_type] = user_type if user_type
+        info
       end
 
       extra do
@@ -55,7 +70,21 @@ module OmniAuth
       end
 
       def raw_info
-        @raw_info ||= access_token.get('/me').parsed
+        @raw_info ||= { me: me_response, canonical: canonical_response }
+      end
+
+      def me_response
+        @me_response ||= access_token.get("/#{CLEVER_API_VERSION}/me").parsed
+      end
+
+      # Get personal information about the user, such as name and email.
+      def canonical_response
+        return @canonical_response if @canonical_response
+
+        # https://dev.clever.com/v2.1/docs/data-model#links
+        links = me_response['links']
+        canonical_url = links.detect { |pair| pair['rel'] == 'canonical' }['uri']
+        @canonical_response = access_token.get(canonical_url).parsed
       end
 
       # Fix unknown redirect uri bug by NOT appending the query string to the callback url.
