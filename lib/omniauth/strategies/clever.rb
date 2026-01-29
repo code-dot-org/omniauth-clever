@@ -4,7 +4,7 @@ require 'base64'
 module OmniAuth
   module Strategies
     class Clever < OmniAuth::Strategies::OAuth2
-      CLEVER_API_VERSION = 'v2.1'
+      CLEVER_API_VERSION = 'v3.0'
 
       # Clever is a unique OAuth 2.0 service provider in that login sequences
       # are often initiated by Clever, not the client. When Clever initiates
@@ -81,7 +81,7 @@ module OmniAuth
       def canonical_response
         return @canonical_response if @canonical_response
 
-        # https://dev.clever.com/v2.1/docs/data-model#links
+        # https://dev.clever.com/v3.0/docs/data-model#links
         links = me_response['links']
         canonical_url = links.detect { |pair| pair['rel'] == 'canonical' }['uri']
         @canonical_response = access_token.get(canonical_url).parsed
